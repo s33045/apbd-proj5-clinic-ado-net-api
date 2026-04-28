@@ -6,7 +6,7 @@ public class AppointmentDetailsDto
     public DateTime AppointmentDate { get; set; }
     public string Status { get; set; } = string.Empty;
     public string Reason { get; set; } = string.Empty;
-    public string? InternalNotes { get; set; } = string.Empty;
+    public string? InternalNotes { get; set; }
     public DateTime CreatedAt { get; set; }
 
     public int IdPatient { get; set; }
