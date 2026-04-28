@@ -11,8 +11,23 @@ public class AppointmentsController(IAppointmentService appointmentService) : Co
     private const string Scheduled = "Scheduled";
     private const string Completed = "Completed";
     private const string Cancelled = "Cancelled";
-    
 
+    [HttpGet]
+    public async Task<ActionResult<IEnumerable<AppointmentListDto>>> GetAll(
+        [FromQuery] string? status,
+        [FromQuery] string? patientLastName,
+        [FromQuery] int? idDoctor)
+    {
+        if (!string.IsNullOrWhiteSpace(status) && !IsValidStatus(status))
+            return BadRequest(Error($"Invalid status: {status}"));
+
+        if (idDoctor <= 0)
+            return BadRequest(Error($"Invalid doctor id: {idDoctor}"));
+
+        var appointments = await appointmentService.GetAllAsync(status, patientLastName, idDoctor);
+
+        return Ok(appointments);
+    }
 
     private static bool IsValidStatus(string status)
     {
