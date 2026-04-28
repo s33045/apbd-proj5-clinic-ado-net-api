@@ -323,6 +323,8 @@ public class AppointmentService(IConfiguration configuration) : IAppointmentServ
 
         command.Parameters.Add("@IdDoctor", SqlDbType.Int).Value = idDoctor;
         command.Parameters.Add("@AppointmentDate", SqlDbType.DateTime2).Value = appointmentDate;
+        command.Parameters.Add("@IgnoredAppointmentId", SqlDbType.Int).Value =
+            (object?)ignoredAppointmentId ?? DBNull.Value;
 
         var count = Convert.ToInt32(await command.ExecuteScalarAsync());
 
