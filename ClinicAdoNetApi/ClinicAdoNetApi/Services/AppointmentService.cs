@@ -6,6 +6,9 @@ namespace ClinicAdoNetApi.Services;
 
 public class AppointmentService(IConfiguration configuration) : IAppointmentService
 {
+    private const string Scheduled = "Scheduled";
+    private const string Completed = "Completed";
+
     private readonly string _connectionString = configuration.GetConnectionString("DefaultConnection")
                                                 ?? throw new InvalidOperationException(
                                                     "Connection string DefaultConnection not found.");
@@ -138,7 +141,7 @@ public class AppointmentService(IConfiguration configuration) : IAppointmentServ
         if (!await ActiveDoctorExistsAsync(connection, request.IdDoctor))
             return (CreateAppointmentStatus.DoctorNotFoundOrInactive, null);
 
-        if (await DoctorHasConflictAsync(connection, request.IdDoctor, request.AppointmentDate))
+        if (await DoctorHasConflictAsync(connection, request.IdDoctor, request.AppointmentDate, null))
             return (CreateAppointmentStatus.DoctorTimeConflict, null);
 
         var sql = """
@@ -161,6 +164,87 @@ public class AppointmentService(IConfiguration configuration) : IAppointmentServ
         return (CreateAppointmentStatus.Success, newId);
     }
 
+    public async Task<UpdateAppointmentStatus> UpdateAsync(int idAppointment, UpdateAppointmentRequestDto request)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var currentAppointment = await GetCurrentAppointmentAsync(connection, idAppointment);
+
+        if (currentAppointment is null)
+            return UpdateAppointmentStatus.NotFound;
+
+        if (!await ActivePatientExistsAsync(connection, request.IdPatient))
+            return UpdateAppointmentStatus.PatientNotFoundOrInactive;
+
+        if (!await ActiveDoctorExistsAsync(connection, request.IdDoctor))
+            return UpdateAppointmentStatus.DoctorNotFoundOrInactive;
+
+        if (currentAppointment.Value.Status == Completed &&
+            request.AppointmentDate != currentAppointment.Value.AppointmentDate)
+            return UpdateAppointmentStatus.CompletedDateCannotBeChanged;
+
+        if (request.Status.Trim() == Scheduled &&
+            await DoctorHasConflictAsync(connection, request.IdDoctor, request.AppointmentDate, idAppointment))
+            return UpdateAppointmentStatus.DoctorTimeConflict;
+
+        var internalNotes = Normalize(request.InternalNotes);
+
+        var sql = """
+                  UPDATE dbo.Appointments
+                  SET
+                      IdPatient = @IdPatient,
+                      IdDoctor = @IdDoctor,
+                      AppointmentDate = @AppointmentDate,
+                      Status = @Status,
+                      Reason = @Reason,
+                      InternalNotes = @InternalNotes
+                  WHERE IdAppointment = @IdAppointment;
+                  """;
+
+        await using var command = new SqlCommand(sql, connection);
+
+        command.Parameters.Add("@IdAppointment", SqlDbType.Int).Value = idAppointment;
+        command.Parameters.Add("@IdPatient", SqlDbType.Int).Value = request.IdPatient;
+        command.Parameters.Add("@IdDoctor", SqlDbType.Int).Value = request.IdDoctor;
+        command.Parameters.Add("@AppointmentDate", SqlDbType.DateTime2).Value = request.AppointmentDate;
+        command.Parameters.Add("@Status", SqlDbType.NVarChar, 30).Value = request.Status.Trim();
+        command.Parameters.Add("@Reason", SqlDbType.NVarChar, 250).Value = request.Reason.Trim();
+        command.Parameters.Add("@InternalNotes", SqlDbType.NVarChar, 500).Value =
+            (object?)internalNotes ?? DBNull.Value;
+
+        await command.ExecuteNonQueryAsync();
+
+        return UpdateAppointmentStatus.Success;
+    }
+
+    public async Task<DeleteAppointmentStatus> DeleteAsync(int idAppointment)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var currentAppointment = await GetCurrentAppointmentAsync(connection, idAppointment);
+
+        if (currentAppointment is null)
+            return DeleteAppointmentStatus.NotFound;
+
+        if (currentAppointment.Value.Status == Completed)
+            return DeleteAppointmentStatus.CompletedAppointment;
+
+        var sql = """
+                  DELETE FROM dbo.Appointments
+                  WHERE IdAppointment = @IdAppointment;
+                  """;
+
+        await using var command = new SqlCommand(sql, connection);
+
+        command.Parameters.Add("@IdAppointment", SqlDbType.Int).Value = idAppointment;
+
+        await command.ExecuteNonQueryAsync();
+
+        return DeleteAppointmentStatus.Success;
+    }
+
     private static async Task<bool> ActivePatientExistsAsync(SqlConnection connection, int idPatient)
     {
         var sql = """
@@ -177,6 +261,28 @@ public class AppointmentService(IConfiguration configuration) : IAppointmentServ
         var count = Convert.ToInt32(await command.ExecuteScalarAsync());
 
         return count > 0;
+    }
+
+    private static async Task<(string Status, DateTime AppointmentDate)?> GetCurrentAppointmentAsync(
+        SqlConnection connection,
+        int idAppointment)
+    {
+        var sql = """
+                  SELECT Status, AppointmentDate
+                  FROM dbo.Appointments
+                  WHERE IdAppointment = @IdAppointment;
+                  """;
+
+        await using var command = new SqlCommand(sql, connection);
+
+        command.Parameters.Add("@IdAppointment", SqlDbType.Int).Value = idAppointment;
+
+        await using var reader = await command.ExecuteReaderAsync();
+
+        if (!await reader.ReadAsync())
+            return null;
+
+        return (reader.GetString(0), reader.GetDateTime(1));
     }
 
     private static async Task<bool> ActiveDoctorExistsAsync(SqlConnection connection, int idDoctor)
@@ -200,14 +306,17 @@ public class AppointmentService(IConfiguration configuration) : IAppointmentServ
     private static async Task<bool> DoctorHasConflictAsync(
         SqlConnection connection,
         int idDoctor,
-        DateTime appointmentDate)
+        DateTime appointmentDate,
+        int? ignoredAppointmentId
+    )
     {
         var sql = """
                   SELECT COUNT(1)
                    FROM dbo.Appointments
                    WHERE IdDoctor = @IdDoctor
                      AND AppointmentDate = @AppointmentDate
-                     AND Status = N'Scheduled'
+                  AND Status = N'Scheduled'
+                  AND (@IgnoredAppointmentId IS NULL OR IdAppointment != @IgnoredAppointmentId);
                   """;
 
         await using var command = new SqlCommand(sql, connection);

@@ -88,6 +88,87 @@ public class AppointmentsController(IAppointmentService appointmentService) : Co
             createdAppointment);
     }
 
+    [HttpPut("{idAppointment:int}")]
+    public async Task<ActionResult<AppointmentDetailsDto>> Update(
+        int idAppointment,
+        UpdateAppointmentRequestDto request)
+    {
+        if (idAppointment <= 0)
+            return BadRequest(Error("IdAppointment must be greater than 0."));
+
+        string? message = null;
+
+        if (request.IdPatient <= 0)
+            message = "IdPatient must be greater than 0.";
+
+        if (request.IdDoctor <= 0)
+            message = "IdDoctor must be greater than 0.";
+
+        if (string.IsNullOrWhiteSpace(request.Status) || !IsValidStatus(request.Status))
+            message = "Status must be one of: Scheduled, Completed, Cancelled.";
+
+        if (request.Status.Trim() == Scheduled && request.AppointmentDate <= DateTime.Now)
+            message = "Scheduled appointment date cannot be in the past.";
+
+        if (string.IsNullOrWhiteSpace(request.Reason))
+            message = "Reason cannot be empty.";
+
+        if (request.Reason.Trim().Length > 250)
+            message = "Reason cannot be longer than 250 characters.";
+
+        if (request.InternalNotes is not null && request.InternalNotes.Trim().Length > 500)
+            message = "Internal notes cannot be longer than 500 characters.";
+
+        if (message is not null)
+            return BadRequest(Error(message));
+
+        var result = await appointmentService.UpdateAsync(idAppointment, request);
+
+        switch (result)
+        {
+            case UpdateAppointmentStatus.NotFound:
+                return NotFound(Error("Appointment not found."));
+
+            case UpdateAppointmentStatus.PatientNotFoundOrInactive:
+                return BadRequest(Error("Patient does not exist or is inactive."));
+
+            case UpdateAppointmentStatus.DoctorNotFoundOrInactive:
+                return BadRequest(Error("Doctor does not exist or is inactive."));
+
+            case UpdateAppointmentStatus.DoctorTimeConflict:
+                return Conflict(Error("Doctor already has a scheduled appointment at this date."));
+
+            case UpdateAppointmentStatus.CompletedDateCannotBeChanged:
+                return Conflict(Error("Completed appointment date cannot be changed."));
+        }
+
+        var updatedAppointment = await appointmentService.GetByIdAsync(idAppointment);
+
+        return Ok(updatedAppointment);
+    }
+
+    [HttpDelete("{idAppointment:int}")]
+    public async Task<IActionResult> Delete(int idAppointment)
+    {
+        if (idAppointment <= 0)
+            return BadRequest(Error("IdAppointment must be greater than 0."));
+
+        var result = await appointmentService.DeleteAsync(idAppointment);
+
+        return result switch
+        {
+            DeleteAppointmentStatus.Success => NoContent(),
+
+            DeleteAppointmentStatus.NotFound =>
+                NotFound(Error("Appointment not found.")),
+
+            DeleteAppointmentStatus.CompletedAppointment =>
+                Conflict(Error("Completed appointment cannot be deleted.")),
+
+            _ => BadRequest(Error("Operation failed."))
+        };
+    }
+
     private static bool IsValidStatus(string status)
     {
         return status.Trim() is Scheduled or Completed or Cancelled;
