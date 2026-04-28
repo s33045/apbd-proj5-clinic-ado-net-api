@@ -126,6 +126,99 @@ public class AppointmentService(IConfiguration configuration) : IAppointmentServ
         };
     }
 
+    public async Task<(CreateAppointmentStatus Status, int? idAppointment)> CreateAsync(
+        CreateAppointmentRequestDto request)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        if (!await ActivePatientExistsAsync(connection, request.IdPatient))
+            return (CreateAppointmentStatus.PatientNotFoundOrInactive, null);
+
+        if (!await ActiveDoctorExistsAsync(connection, request.IdDoctor))
+            return (CreateAppointmentStatus.DoctorNotFoundOrInactive, null);
+
+        if (await DoctorHasConflictAsync(connection, request.IdDoctor, request.AppointmentDate))
+            return (CreateAppointmentStatus.DoctorTimeConflict, null);
+
+        var sql = """
+                  INSERT INTO dbo.Appointments
+                      (IdPatient, IdDoctor, AppointmentDate, Status, Reason)
+                  OUTPUT INSERTED.IdAppointment
+                  VALUES
+                      (@IdPatient, @IdDoctor, @AppointmentDate, N'Scheduled', @Reason);
+                  """;
+
+        await using var command = new SqlCommand(sql, connection);
+
+        command.Parameters.Add("@IdPatient", SqlDbType.Int).Value = request.IdPatient;
+        command.Parameters.Add("@IdDoctor", SqlDbType.Int).Value = request.IdDoctor;
+        command.Parameters.Add("@AppointmentDate", SqlDbType.DateTime2).Value = request.AppointmentDate;
+        command.Parameters.Add("@Reason", SqlDbType.NVarChar, 250).Value = request.Reason.Trim();
+
+        var newId = Convert.ToInt32(await command.ExecuteScalarAsync());
+
+        return (CreateAppointmentStatus.Success, newId);
+    }
+
+    private static async Task<bool> ActivePatientExistsAsync(SqlConnection connection, int idPatient)
+    {
+        var sql = """
+                  SELECT COUNT(1)
+                  FROM dbo.Patients
+                  WHERE IdPatient = @IdPatient
+                    AND IsActive = 1;
+                  """;
+
+        await using var command = new SqlCommand(sql, connection);
+
+        command.Parameters.Add("@IdPatient", SqlDbType.Int).Value = idPatient;
+
+        var count = Convert.ToInt32(await command.ExecuteScalarAsync());
+
+        return count > 0;
+    }
+
+    private static async Task<bool> ActiveDoctorExistsAsync(SqlConnection connection, int idDoctor)
+    {
+        var sql = """
+                  SELECT COUNT(1)
+                  FROM dbo.Doctors
+                  WHERE IdDoctor = @IdDoctor
+                    AND IsActive = 1;
+                  """;
+
+        await using var command = new SqlCommand(sql, connection);
+
+        command.Parameters.Add("@IdDoctor", SqlDbType.Int).Value = idDoctor;
+
+        var count = Convert.ToInt32(await command.ExecuteScalarAsync());
+
+        return count > 0;
+    }
+
+    private static async Task<bool> DoctorHasConflictAsync(
+        SqlConnection connection,
+        int idDoctor,
+        DateTime appointmentDate)
+    {
+        var sql = """
+                  SELECT COUNT(1)
+                   FROM dbo.Appointments
+                   WHERE IdDoctor = @IdDoctor
+                     AND AppointmentDate = @AppointmentDate
+                     AND Status = N'Scheduled'
+                  """;
+
+        await using var command = new SqlCommand(sql, connection);
+
+        command.Parameters.Add("@IdDoctor", SqlDbType.Int).Value = idDoctor;
+        command.Parameters.Add("@AppointmentDate", SqlDbType.DateTime2).Value = appointmentDate;
+
+        var count = Convert.ToInt32(await command.ExecuteScalarAsync());
+
+        return count > 0;
+    }
 
     private static string? Normalize(string? value)
     {
