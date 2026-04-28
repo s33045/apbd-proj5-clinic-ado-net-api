@@ -126,7 +126,7 @@ public class AppointmentService(IConfiguration configuration) : IAppointmentServ
         };
     }
 
-    public async Task<(CreateAppointmentStatus Status, int? idAppointment)> CreateAsync(
+    public async Task<(CreateAppointmentStatus Status, int? IdAppointment)> CreateAsync(
         CreateAppointmentRequestDto request)
     {
         await using var connection = new SqlConnection(_connectionString);

@@ -43,6 +43,51 @@ public class AppointmentsController(IAppointmentService appointmentService) : Co
         return Ok(appointment);
     }
 
+    [HttpPost]
+    public async Task<ActionResult<AppointmentDetailsDto>> Create(CreateAppointmentRequestDto request)
+    {
+        string? message = null;
+
+        if (request.IdPatient <= 0)
+            message = "IdPatient must be greater than 0.";
+
+        if (request.IdDoctor <= 0)
+            message = "IdDoctor must be greater than 0.";
+
+        if (request.AppointmentDate <= DateTime.Now)
+            message = "Appointment date cannot be in the past.";
+
+        if (string.IsNullOrWhiteSpace(request.Reason))
+            message = "Reason cannot be empty.";
+
+        if (request.Reason.Trim().Length > 250)
+            message = "Reason cannot be longer than 250 characters.";
+
+        if (message is not null)
+            return BadRequest(Error(message));
+
+        var result = await appointmentService.CreateAsync(request);
+
+        switch (result.Status)
+        {
+            case CreateAppointmentStatus.PatientNotFoundOrInactive:
+                return BadRequest(Error("Patient does not exist or is inactive."));
+
+            case CreateAppointmentStatus.DoctorNotFoundOrInactive:
+                return BadRequest(Error("Doctor does not exist or is inactive."));
+
+            case CreateAppointmentStatus.DoctorTimeConflict:
+                return Conflict(Error("Doctor already has a scheduled appointment at this date."));
+        }
+
+        var createdAppointment = await appointmentService.GetByIdAsync(result.IdAppointment!.Value);
+
+        return CreatedAtAction(
+            nameof(GetById),
+            new { idAppointment = result.IdAppointment.Value },
+            createdAppointment);
+    }
+
     private static bool IsValidStatus(string status)
     {
         return status.Trim() is Scheduled or Completed or Cancelled;

@@ -6,5 +6,5 @@ public interface IAppointmentService
 {
     Task<List<AppointmentListDto>> GetAllAsync(string? status, string? patientLastName, int? idDoctor);
     Task<AppointmentDetailsDto?> GetByIdAsync(int idAppointment);
-    Task<(CreateAppointmentStatus Status, int? idAppointment)> CreateAsync(CreateAppointmentRequestDto request);
+    Task<(CreateAppointmentStatus Status, int? IdAppointment)> CreateAsync(CreateAppointmentRequestDto request);
 }
