@@ -1,16 +1,19 @@
 using ClinicAdoNetApi.DTOs;
+using ClinicAdoNetApi.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ClinicAdoNetApi.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-public class AppointmentsController : ControllerBase
+public class AppointmentsController(IAppointmentService appointmentService) : ControllerBase
 {
     private const string Scheduled = "Scheduled";
     private const string Completed = "Completed";
     private const string Cancelled = "Cancelled";
     
+
+
     private static bool IsValidStatus(string status)
     {
         return status.Trim() is Scheduled or Completed or Cancelled;
@@ -20,7 +23,7 @@ public class AppointmentsController : ControllerBase
     {
         return new ErrorResponseDto
         {
-            Message = message,
+            Message = message
         };
     }
 }
