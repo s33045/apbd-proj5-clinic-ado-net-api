@@ -9,6 +9,13 @@ public class AppointmentService(IConfiguration configuration) : IAppointmentServ
 
     public Task<List<AppointmentListDto>> GetAllAsync(string? status, string? patientLastName, int? idDoctor)
     {
-        throw new NotImplementedException();
+        throw  new NotImplementedException();
+    }
+
+    private static string? Normalize(string? value)
+    {
+        value = value?.Trim();
+        
+        return string.IsNullOrEmpty(value) ? null : value;
     }
 }
