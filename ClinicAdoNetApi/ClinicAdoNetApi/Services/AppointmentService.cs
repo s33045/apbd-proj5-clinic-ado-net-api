@@ -6,7 +6,7 @@ namespace ClinicAdoNetApi.Services;
 
 public class AppointmentService(IConfiguration configuration) : IAppointmentService
 {
-    private readonly string _connectionString = configuration.GetConnectionString("ClinicAdoNetApi")
+    private readonly string _connectionString = configuration.GetConnectionString("DefaultConnection")
                                                 ?? throw new InvalidOperationException(
                                                     "Connection string DefaultConnection not found.");
 
