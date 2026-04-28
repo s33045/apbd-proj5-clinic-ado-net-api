@@ -63,6 +63,12 @@ public class AppointmentService(IConfiguration configuration) : IAppointmentServ
         return appointments;
     }
 
+    public Task<AppointmentDetailsDto?> GetByIdAsync(int idAppointment)
+    {
+        throw new NotImplementedException();
+    }
+
+
     private static string? Normalize(string? value)
     {
         value = value?.Trim();
