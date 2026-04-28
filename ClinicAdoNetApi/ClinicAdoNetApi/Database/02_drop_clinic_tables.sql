@@ -1,5 +1,5 @@
 USE
-ClinicAdoNet;
+    ClinicAdoNet;
 GO
 
 DROP TABLE IF EXISTS dbo.Appointments;
