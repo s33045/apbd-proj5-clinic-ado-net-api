@@ -4,8 +4,10 @@
 - SQL Server LocalDB
 
 ## Baza danych
+
 Projekt używa SQL Server LocalDB.
 Przed uruchomieniem API należy wykonać skrypt:
+
 ```txt
 Database/01_create_and_seed_clinic.sql
 ```
